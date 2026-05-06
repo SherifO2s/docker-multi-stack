@@ -1,0 +1,99 @@
+version: "3.9"
+
+services:
+
+  # ──────────────────────────────────────────────
+  # Flask + PostgreSQL stack
+  # ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: flask_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: blogdb
+      POSTGRES_USER: bloguser
+      POSTGRES_PASSWORD: blogpass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - flask_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bloguser -d blogdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  flask:
+    build:
+      context: ./flask-app
+      dockerfile: Dockerfile
+    container_name: flask_app
+    restart: unless-stopped
+    ports:
+      - "5001:5000"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: blogdb
+      DB_USER: bloguser
+      DB_PASS: blogpass
+      SECRET_KEY: change-me-in-production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - flask_net
+
+  # ──────────────────────────────────────────────
+  # WordPress + MySQL stack
+  # ──────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: wp_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: wordpressdb
+      MYSQL_USER: wpuser
+      MYSQL_PASSWORD: wppass
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - wp_net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "wpuser", "--password=wppass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  wordpress:
+    build:
+      context: ./wordPress-app
+      dockerfile: Dockerfile
+    container_name: wp_app
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      WORDPRESS_DB_HOST: mysql:3306
+      WORDPRESS_DB_NAME: wordpressdb
+      WORDPRESS_DB_USER: wpuser
+      WORDPRESS_DB_PASSWORD: wppass
+      WORDPRESS_TABLE_PREFIX: wp_
+      WP_DEBUG: "false"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - wp_data:/var/www/html
+    networks:
+      - wp_net
+
+volumes:
+  postgres_data:
+  mysql_data:
+  wp_data:
+
+networks:
+  flask_net:
+  wp_net:
